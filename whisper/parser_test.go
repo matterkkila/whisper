@@ -4,9 +4,19 @@ import (
 	"testing"
 )
 
+func BenchmarkParseMetric(b *testing.B) {
+	s := []byte("my.metric.name 1|c 1379700446")
+	p := TextParser{}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		p.Parse(s)
+	}
+}
+
 func TestParseMetric(t *testing.T) {
 	s := "my.metric.name 1|c 1379700446"
-	m, err := ParseMetric(s)
+	p := TextParser{}
+	m, err := p.Parse([]byte(s))
 	if err != nil {
 		t.Error(err)
 	}

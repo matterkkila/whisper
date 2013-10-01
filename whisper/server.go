@@ -8,14 +8,22 @@ import (
 type Server struct {
 	conn    *net.UDPConn
 	parser  *Parser
-	workers chan *Metric
+	workers chan *metricBuffer
+}
+
+type metricBuffer struct {
+	buf *[]byte
+	length int
 }
 
 func (s *Server) spawnWorkers(poolSize int) {
 	for i := 0; i < poolSize; i++ {
 		go func() {
-			for metric := range s.workers {
-				s.handleMetric(metric)
+			for mb := range s.workers {
+				metric, err := (*s.parser).Parse((*mb.buf)[:mb.length])
+				if err == nil {
+					s.handleMetric(metric)
+				}
 			}
 		}()
 	}
@@ -28,12 +36,7 @@ func (s *Server) handleMessage() {
 		log.Printf("error: %v", err)
 		return
 	}
-	metric, err := (*s.parser).Parse(buf[:n])
-	if err != nil {
-		log.Printf("bad metric, ignoring. %v", buf[:n])
-		return
-	}
-	s.workers <- metric
+	s.workers <- &metricBuffer{&buf, n}
 }
 
 func (s *Server) handleMetric(metric *Metric) {
@@ -58,7 +61,7 @@ func NewServer(address string, parser *Parser, poolSize int) (*Server, error) {
 		return nil, err
 	}
 
-	workers := make(chan *Metric, 64)
+	workers := make(chan *metricBuffer, 64)
 	s := Server{conn, parser, workers}
 	s.spawnWorkers(poolSize)
 
