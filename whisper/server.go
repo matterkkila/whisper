@@ -1,21 +1,31 @@
 package whisper
 
 import (
-	"fmt"
 	"log"
 	"net"
 )
 
 type Server struct {
-	conn   *net.UDPConn
-	parser *Parser
+	conn    *net.UDPConn
+	parser  *Parser
+	workers chan *Metric
+}
+
+func (s *Server) spawnWorkers(poolSize int) {
+	for i := 0; i < poolSize; i++ {
+		go func() {
+			for metric := range s.workers {
+				s.handleMetric(metric)
+			}
+		}()
+	}
 }
 
 func (s *Server) handleMessage() {
-	buf := make([]byte, 1024)
-
+	buf := make([]byte, 4096)
 	n, _, err := s.conn.ReadFromUDP(buf[0:])
 	if err != nil {
+		log.Printf("error: %v", err)
 		return
 	}
 	metric, err := (*s.parser).Parse(buf[:n])
@@ -23,29 +33,34 @@ func (s *Server) handleMessage() {
 		log.Printf("bad metric, ignoring. %v", buf[:n])
 		return
 	}
-	s.handleMetric(metric)
+	s.workers <- metric
 }
 
 func (s *Server) handleMetric(metric *Metric) {
 	log.Printf("%v", metric)
 }
 
-func checkError(err error) {
-	if err != nil {
-		panic(fmt.Sprintf("Fatal error:%s", err.Error()))
-	}
-}
-
-func Serve(address string, parser *Parser) {
-	udpAddr, err := net.ResolveUDPAddr("udp4", address)
-	checkError(err)
-
-	conn, err := net.ListenUDP("udp", udpAddr)
-	checkError(err)
-
-	s := Server{conn, parser}
-
+func (s *Server) Serve() {
 	for {
 		s.handleMessage()
 	}
+	close(s.workers)
+}
+
+func NewServer(address string, parser *Parser, poolSize int) (*Server, error) {
+	udpAddr, err := net.ResolveUDPAddr("udp4", address)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := net.ListenUDP("udp", udpAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	workers := make(chan *Metric, 64)
+	s := Server{conn, parser, workers}
+	s.spawnWorkers(poolSize)
+
+	return &s, nil
 }

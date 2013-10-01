@@ -15,7 +15,7 @@ type Parser interface {
 	Parse([]byte) (*Metric, error)
 }
 
-type TextParser struct {}
+type TextParser struct{}
 
 func (p TextParser) Parse(buf []byte) (*Metric, error) {
 	txt := string(buf)
